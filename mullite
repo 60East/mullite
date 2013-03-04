@@ -91,14 +91,6 @@ def extract_tag_from_comment(change, tag):
       return None
 
 
-def no_review(change):
-   return change["comment"].find("#noreview") > -1
-
-
-def find_review_name_in_comment(change):
-   return extract_tag_from_comment(change, "#review")
-
-
 def find_reviewers(change):
    reviewers = extract_tag_from_comment(change, "#reviewers")
    if reviewers == None:
@@ -165,7 +157,7 @@ def create_review(change):
 
 
 def append_to_review(change):
-   review_id = find_review_name_in_comment(change)
+   review_id = extract_tag_from_comment(change, "#review")
    if review_id == None: return False
    try:
       message = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -192,8 +184,10 @@ def main():
          if has_been_processed(change_id):
             continue
          change = get_change(repo, change_id)
-         if no_review(change):
+         if change["comment"].find("#noreview") > -1:
             log("tagged as #noreview, skipping review creation: %s" % (change["id"]))
+         elif len(change["files"]) == 0:
+            log("no files, skipping review creation: %s" % (change["id"]))
          elif append_to_review(change):
             log("appended to review %s: %s" % (change["review"], change["id"]))
          elif create_review(change):
