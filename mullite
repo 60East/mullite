@@ -7,13 +7,12 @@ import xml.dom.minidom
 
 
 cfg = imp.load_source("mullite", "mullite.conf")
-cfg.users.update({v:v for k, v in cfg.users.items()})
+reverse_users = {}
+for k, v in cfg.users.items():
+   reverse_users[v] = v
+cfg.users.update(reverse_users)
 base64string = base64.encodestring('%s:%s' % (cfg.script_user,cfg.script_pass)).replace('\n', '')
 
-# for repo, users in cfg.repos.items():
-#    print repo
-# 
-# exit()
 
 commit_file = "mullite.progress"
 commit_lines = set()
@@ -192,51 +191,20 @@ def main():
    for repo, users in cfg.repos.items():
       for change_id in get_change_ids(repo, cfg.history_window):
          if has_been_processed(change_id):
-            log("already processed, skipping: %s" % (change_id))
+            #log("already processed, skipping: %s" % (change_id))
             continue
          change = get_change(repo, change_id)
          if no_review(change):
             log("tagged as #noreview, skipping review creation: %s" % (change["id"]))
-         # elif append_to_review(change):
-         #    log("appended to review %s: %s" % (change["review"], change["id"]))
-         # elif create_review(change):
-         #    log("created review %s: %s" % (change["review"], change["id"]))
+         elif append_to_review(change):
+            log("appended to review %s: %s" % (change["review"], change["id"]))
+         elif create_review(change):
+            log("created review %s: %s" % (change["review"], change["id"]))
          else:
             log("failed to process change %s" % (change["id"]), "WARN")
          mark_as_processed(change_id)
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 

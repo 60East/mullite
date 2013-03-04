@@ -1,2 +1,4 @@
-mullite.conf
+mullite.conf*
+mullite.out
+mullite.progress
 *~
