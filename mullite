@@ -154,7 +154,6 @@ def create_review(change):
 </createReview>""" % (cfg.users[author], cfg.script_user, change["comment"], change["comment"], change["repo"], reviewers_str, change["id"], change["repo"])
       url = "%s/reviews-v1" % (cfg.server_base)
       print message
-      exit()
       result = ET.fromstring(post_xml(url, message))
       review_id = result.find("permaId").find("id").text
       log("new review id: %s" % (review_id))
@@ -191,7 +190,6 @@ def main():
    for repo, users in cfg.repos.items():
       for change_id in get_change_ids(repo, cfg.history_window):
          if has_been_processed(change_id):
-            #log("already processed, skipping: %s" % (change_id))
             continue
          change = get_change(repo, change_id)
          if no_review(change):

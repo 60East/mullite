@@ -16,7 +16,7 @@ users = {
 # map of repo names to lists of candidate reviewers
 repos = {
    "gobias-industries" : [ "nevernude", "illusionist" ],
-   "bannana-stand" : [ "michael", "mr_manager" ],
+   "banana-stand" : [ "michael", "mr_manager" ],
    "model-home" : [ "michael", "mr_manager", "nevernude" ],
 }
 
