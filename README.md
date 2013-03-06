@@ -72,5 +72,8 @@ Tells mullite to assign a specific list of users to this review rather than sele
     http://docs.atlassian.com/fisheye-crucible/latest/wadl/crucible.html
     http://docs.atlassian.com/fisheye-crucible/latest/wadl/fecru.html
 
+### License
+
+Licensed under The MIT License, check the mullite script for full details.
 
 
