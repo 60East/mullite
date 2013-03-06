@@ -1,9 +1,36 @@
 #!/usr/bin/env python
 
+# The MIT License (MIT)
+# Copyright (c) 2013 60East Technologies, Inc.
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy of
+# this software and associated documentation files (the "Software"), to deal in
+# the Software without restriction, including without limitation the rights to
+# use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do
+# so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 import urllib2, base64, random, sys, imp, pprint as pp
+from xml.sax.saxutils import escape
 import xml.etree.ElementTree as ET
 from datetime import datetime
 import xml.dom.minidom
+
+
+
+in_production = True
+
 
 
 cfg = imp.load_source("mullite", "mullite.conf")
@@ -26,12 +53,15 @@ def has_been_processed(change_id):
    return change_id in commit_lines
 
 def mark_as_processed(change_id):
-   if (has_been_processed(change_id)):
+   if (not in_production or has_been_processed(change_id)):
       return
    commit_lines.add(change_id)
    with open(commit_file, "a") as f:
        f.write("\n%s" % (change_id))
 
+
+def escape_tuple(t):
+   return tuple([ escape(s) for s in t ])
 
 
 def get_xml(url):
@@ -116,7 +146,8 @@ def create_review(change):
       if reviewers == None:
          log("no reviewer found for %s's change, skipping review creation for %s" % (author, change["id"]))
          return
-      reviewers_str = "".join(["""<reviewer><userName>%s</userName></reviewer>""" % (s) for s in reviewers])
+      reviewers_str = "".join(["""<reviewer><userName>%s</userName></reviewer>""" % (escape(s)) for s in reviewers])
+      description_str = "[%s] %s" % (change["branch"], change["comment"])
       message = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <createReview>
    <detailedReviewData>
@@ -143,11 +174,16 @@ def create_review(change):
       </changesetData>
       <repository>%s</repository>
    </changesets>
-</createReview>""" % (cfg.users[author], cfg.script_user, change["comment"], change["comment"], change["repo"], reviewers_str, change["id"], change["repo"])
+</createReview>""" % escape_tuple((cfg.users[author], cfg.script_user, description_str, description_str, change["repo"], reviewers_str, change["id"], change["repo"]))
       url = "%s/reviews-v1" % (cfg.server_base)
-      print message
-      result = ET.fromstring(post_xml(url, message))
-      review_id = result.find("permaId").find("id").text
+      if in_production:
+         result = ET.fromstring(post_xml(url, message))
+         review_id = result.find("permaId").find("id").text
+      else:
+         review_id = "in_debug_mode"
+         log("~~ in debug mode create_review(%s) ~~~" % (change["id"]))
+         log("url: %s" % (url))
+         log("msg: %s" % (message))
       log("new review id: %s" % (review_id))
       change["review"] = review_id
       return True
@@ -168,9 +204,14 @@ def append_to_review(change):
             <id>%s</id>
         </changesetData>
     </changesets>
-</addChangeset>""" % (change["repo"], change["id"])
+</addChangeset>""" % escape_tuple((change["repo"], change["id"]))
       url = "%s/reviews-v1/%s/addChangeset" % (cfg.server_base, review_id)
-      result = ET.fromstring(post_xml(url, message))
+      if in_production:
+         result = ET.fromstring(post_xml(url, message))
+      else:
+         log("~~ in debug mode append_to_review(%s) ~~~" % (review_id))
+         log("url: %s" % (url))
+         log("msg: %s" % (message))
       change["review"] = review_id
       return True
    except Exception as e:
