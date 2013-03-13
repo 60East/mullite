@@ -143,7 +143,8 @@ def create_review(change):
          log("no reviewer found for %s's change, skipping review creation for %s" % (author, change["id"]))
          return
       reviewers_str = "".join(["""<reviewer><userName>%s</userName></reviewer>""" % (escape(s)) for s in reviewers])
-      description_str = escape("[%s] %s" % (change["branch"], change["comment"]))
+      name_str = escape("[%s] %s" % (change["branch"], change["comment"][:100]))
+      desc_str = escape("[%s] %s" % (change["branch"], change["comment"]))
       message = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <createReview>
    <detailedReviewData>
@@ -170,7 +171,7 @@ def create_review(change):
       </changesetData>
       <repository>%s</repository>
    </changesets>
-</createReview>""" % (escape(cfg.users[author]), escape(cfg.script_user), escape(description_str), description_str, escape(change["repo"]), reviewers_str, change["id"], escape(change["repo"]))
+</createReview>""" % (escape(cfg.users[author]), escape(cfg.script_user), desc_str, name_str, escape(change["repo"]), reviewers_str, change["id"], escape(change["repo"]))
       url = "%s/reviews-v1" % (cfg.server_base)
       if in_production:
          result = ET.fromstring(post_xml(url, message))
