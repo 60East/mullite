@@ -26,6 +26,7 @@ from xml.sax.saxutils import escape
 import xml.etree.ElementTree as ET
 from datetime import datetime
 import xml.dom.minidom
+import re
 
 
 
@@ -65,7 +66,8 @@ def get_xml(url):
    request = urllib2.Request(url)
    request.add_header("Authorization", "Basic %s" % base64string)
    result = urllib2.urlopen(request)
-   return ET.fromstring(result.read())
+   raw = result.read()
+   return ET.fromstring(raw)
 
 
 def post_xml(url, message):
@@ -90,9 +92,12 @@ def get_change_ids(repository, limit=10):
 
 def get_change(repo, change_id):
    xml = get_xml("%s-fe/revisionData-v1/changeset/%s/%s" % (cfg.server_base, repo, change_id))
+   branch = "unknown"
+   if "branch" in xml.attrib:
+       branch = xml.attrib["branch"]
    change = {
       "author" : xml.attrib["author"].split(" <")[0],
-      "branch" : xml.attrib["branch"],
+      "branch" : branch,
       "comment" : xml.find("comment").text.rstrip(),
       "date" : xml.attrib["date"],
       "email" : xml.attrib["author"].split(" <")[1].split(">")[0],
@@ -222,8 +227,12 @@ def main():
          if has_been_processed(change_id):
             continue
          change = get_change(repo, change_id)
+         branch = change["branch"]
+         included = cfg.branch_include is not None and re.search(cfg.branch_include, branch)
          if change["comment"].find("#noreview") > -1:
             log("tagged as #noreview, skipping review creation: %s" % (change["id"]))
+         elif not included:
+            log("skipping because branch is excluded: %s" % branch)
          elif len(change["files"]) == 0:
             log("no files, skipping review creation: %s" % (change["id"]))
          elif append_to_review(change):
