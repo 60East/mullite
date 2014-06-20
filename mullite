@@ -54,6 +54,7 @@ def has_been_processed(change_id):
    return change_id in commit_lines
 
 def mark_as_processed(change_id):
+   global in_production
    if (not in_production or has_been_processed(change_id)):
       return
    commit_lines.add(change_id)
@@ -135,8 +136,13 @@ def find_reviewers(change):
    reviewer = random.choice(cfg.repos[change["repo"]])
    while reviewer == author:
       reviewer = random.choice(cfg.repos[change["repo"]])
-   log("chose %s to review %s's change in %s" % (reviewer, author, change["repo"]))
-   return [ reviewer ]
+   reviewers = [ reviewer ]
+   if change["repo"] in cfg.repo_subs:
+      reviewers.extend(cfg.repo_subs[change["repo"]])
+   if author in reviewers:
+      reviewers.remove(author)
+   log("chose %s to review %s's change in %s" % (", ".join(reviewers), author, change["repo"]))
+   return reviewers
 
 
 def create_review(change):
@@ -178,6 +184,7 @@ def create_review(change):
    </changesets>
 </createReview>""" % (escape(cfg.users[author]), escape(cfg.script_user), desc_str, name_str, escape(change["repo"]), reviewers_str, change["id"], escape(change["repo"]))
       url = "%s/reviews-v1" % (cfg.server_base)
+      global in_production
       if in_production:
          result = ET.fromstring(post_xml(url, message))
          review_id = result.find("permaId").find("id").text
@@ -208,6 +215,7 @@ def append_to_review(change):
     </changesets>
 </addChangeset>""" % (escape(change["repo"]), change["id"])
       url = "%s/reviews-v1/%s/addChangeset" % (cfg.server_base, review_id)
+      global in_production
       if in_production:
          result = ET.fromstring(post_xml(url, message))
       else:
