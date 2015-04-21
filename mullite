@@ -2,17 +2,17 @@
 
 # The MIT License (MIT)
 # Copyright (c) 2013 60East Technologies, Inc.
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy of
 # this software and associated documentation files (the "Software"), to deal in
 # the Software without restriction, including without limitation the rights to
 # use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
 # of the Software, and to permit persons to whom the Software is furnished to do
 # so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in all
 # copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -26,7 +26,8 @@ from xml.sax.saxutils import escape
 import xml.etree.ElementTree as ET
 from datetime import datetime
 import xml.dom.minidom
-
+import re
+import traceback
 
 
 in_production = True
@@ -47,12 +48,14 @@ try:
    with open(commit_file, 'r') as f:
       commit_lines = set(f.read().lstrip().split("\n"))
 except IOError:
+   traceback.print_exc()
    pass
 
 def has_been_processed(change_id):
    return change_id in commit_lines
 
 def mark_as_processed(change_id):
+   global in_production
    if (not in_production or has_been_processed(change_id)):
       return
    commit_lines.add(change_id)
@@ -65,7 +68,8 @@ def get_xml(url):
    request = urllib2.Request(url)
    request.add_header("Authorization", "Basic %s" % base64string)
    result = urllib2.urlopen(request)
-   return ET.fromstring(result.read())
+   raw = result.read()
+   return ET.fromstring(raw)
 
 
 def post_xml(url, message):
@@ -90,9 +94,12 @@ def get_change_ids(repository, limit=10):
 
 def get_change(repo, change_id):
    xml = get_xml("%s-fe/revisionData-v1/changeset/%s/%s" % (cfg.server_base, repo, change_id))
+   branch = "unknown"
+   if "branch" in xml.attrib:
+       branch = xml.attrib["branch"]
    change = {
       "author" : xml.attrib["author"].split(" <")[0],
-      "branch" : xml.attrib["branch"],
+      "branch" : branch,
       "comment" : xml.find("comment").text.rstrip(),
       "date" : xml.attrib["date"],
       "email" : xml.attrib["author"].split(" <")[1].split(">")[0],
@@ -106,38 +113,68 @@ def get_change(repo, change_id):
 
 
 def extract_tag_from_comment(change, tag):
+   comment = change["comment"]
    tag = tag + " "
-   if change["comment"].find(tag) == -1: return None
+   if comment.find(tag) == -1: return None
    try:
-      v = change["comment"]
-      v = v[change["comment"].find(tag) + len(tag):].lstrip()
+      v = comment
+      v = v[comment.find(tag) + len(tag):].lstrip()
       if v.find(" ") != -1: v = v[:v.find(" ")]
       return v if len(v) > 0 else None
    except:
+      traceback.print_exc()
       return None
 
 
 def find_reviewers(change):
+   stop_appending_random_reviewers_after = 2
+   log("entering find_reviewers(change=%s)" % change)
+   comment = change["comment"]
+   log("comment: '%s'" % comment)
+   author = change["author"]
+   log("author: '%s'" % author)
+   repo = change["repo"]
    reviewers = extract_tag_from_comment(change, "#reviewers")
-   if reviewers == None:
+   log("reviewers pt1: '%s'" % reviewers)
+   if reviewers is None:
       reviewers = extract_tag_from_comment(change, "#reviewer")
-   if reviewers != None:
-      return reviewers.split(",")
-   if change["repo"] not in cfg.repos:
-      log("we don't create reviews for the %s repo" % (change["repo"]))
+      log("reviewers pt2: '%s'" % reviewers)
+   if reviewers is not None:
+      reviewers = reviewers.split(",")
+      log("reviewers pt3: '%s'" % reviewers)
+   if repo not in cfg.repos:
+      sys.stderr.write("we don't create reviews for the %s repo\n" % (repo))
       return None
-   author = cfg.users[change["author"]]
-   reviewer = random.choice(cfg.repos[change["repo"]])
+   # select a non-author reviewer at random
+   if author not in cfg.users:
+      log("author not found in user config: %s" % author, "WARN")
+   author = cfg.users[author]
+   reviewer = random.choice(cfg.repos[repo])
    while reviewer == author:
-      reviewer = random.choice(cfg.repos[change["repo"]])
-   log("chose %s to review %s's change in %s" % (reviewer, author, change["repo"]))
-   return [ reviewer ]
+      reviewer = random.choice(cfg.repos[repo])
+   # add randomly selected reviewer to reviewers list provided it's not already full
+   if reviewers is None:
+      reviewers = []
+   log("reviewers pt4: '%s'" % reviewers)
+   if repo in cfg.repo_subs:
+      reviewers.extend(cfg.repo_subs[repo])
+   log("reviewers pt5: '%s'" % reviewers)
+   if len(reviewers) < stop_appending_random_reviewers_after:
+      reviewers.append(reviewer)
+   if author in reviewers:
+      reviewers.remove(author)
+   log("reviewers pt5: '%s'" % reviewers)
+   retval = list(set(filter(lambda user: user != author, reviewers)))
+   log("leaving find_reviewers(retval=%s)" % retval)
+   return retval
 
 
 def create_review(change):
    log("create_review(change %s)" % (change["id"]))
    try:
+      log("create_review(%s) calling find_reviewers()" % change)
       reviewers = find_reviewers(change)
+      log("reviewer list returned by find_reviewers: [%s]" % ",".join(reviewers))
       author = change["author"]
       if reviewers == None:
          log("no reviewer found for %s's change, skipping review creation for %s" % (author, change["id"]))
@@ -173,6 +210,7 @@ def create_review(change):
    </changesets>
 </createReview>""" % (escape(cfg.users[author]), escape(cfg.script_user), desc_str, name_str, escape(change["repo"]), reviewers_str, change["id"], escape(change["repo"]))
       url = "%s/reviews-v1" % (cfg.server_base)
+      global in_production
       if in_production:
          result = ET.fromstring(post_xml(url, message))
          review_id = result.find("permaId").find("id").text
@@ -185,7 +223,9 @@ def create_review(change):
       change["review"] = review_id
       return True
    except:
+      traceback.print_exc()
       log("failed to create review for change %s: %s" % (change["id"], sys.exc_info()[0]))
+      traceback.print_exc()
       return False
 
 
@@ -203,6 +243,7 @@ def append_to_review(change):
     </changesets>
 </addChangeset>""" % (escape(change["repo"]), change["id"])
       url = "%s/reviews-v1/%s/addChangeset" % (cfg.server_base, review_id)
+      global in_production
       if in_production:
          result = ET.fromstring(post_xml(url, message))
       else:
@@ -212,6 +253,7 @@ def append_to_review(change):
       change["review"] = review_id
       return True
    except Exception as e:
+      traceback.print_exc()
       log("failed to attach change %s to review %s: %s" % (change["id"], review_id, sys.exc_info()[0]))
       return False
 
@@ -222,8 +264,12 @@ def main():
          if has_been_processed(change_id):
             continue
          change = get_change(repo, change_id)
+         branch = change["branch"]
+         included = cfg.branch_include is not None and re.search(cfg.branch_include, branch)
          if change["comment"].find("#noreview") > -1:
             log("tagged as #noreview, skipping review creation: %s" % (change["id"]))
+         elif not included:
+            log("skipping because branch is excluded: %s" % branch)
          elif len(change["files"]) == 0:
             log("no files, skipping review creation: %s" % (change["id"]))
          elif append_to_review(change):
