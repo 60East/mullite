@@ -5,21 +5,48 @@ server_base = "http://example.com:8060/rest-service"
 script_user = "crucibleadmin"
 script_pass = "password"
 
+michael = "michael
+gmichael = "mr_manager"
+tobias = "nevernude"
+gob = "illusionist"
+
 # map of user names to usernames
 users = {
-   "Michael Bluth" : "michael",
-   "George Michael Bluth" : "mr_manager",
-   "Tobias Funke"  : "nevernude",
-   "Gob Bluth"     : "illusionist",
+   "Michael Bluth" : michael,
+   "George Michael Bluth" : gmichael,
+   "Tobias Funke"  : tobias,
+   "Gob Bluth"     : gob,
 }
 
-# map of repo names to lists of candidate reviewers
-repos = {
-   "gobias-industries" : [ "nevernude", "illusionist" ],
-   "banana-stand" : [ "michael", "mr_manager" ],
-   "model-home" : [ "michael", "mr_manager", "nevernude" ],
-}
+devs = [
+     michael,
+     gmichael,
+     tobias,
+     gob,
+]
 
-# how far into the past the script will look on each run
-history_window = 50
+gi = "gobias-industries"
+bs = "banana-stand"
+mh = "model-home"
+
+repo_names = [ gi, bs, mh ]
+
+# map repo names to lists of potential reviewers
+repos = {}
+for repo_name in repo_names:
+    repos[repo_name] = list(devs)
+repos[mh].remove(gob)
+
+# subscriptions - users who are always secondary or tertiary reviewers for a given repo
+repo_subs = {}
+for repo in repos:
+    repo_subs[repo] = []
+for repo in [bs, mh]:
+    repo_subs[repo].append(michael)
+
+# how many changes into the past the script will look on each run
+history_window = 70
+
+# reviews will only be created for branches that match this regex
+branch_include = "^[0-9.]+|develop$"
 
